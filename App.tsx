@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,29 +8,57 @@ import {
   Text,
   View,
 } from 'react-native';
-import MapView, {Marker, Polygon} from 'react-native-maps';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
-//Getting Battery Optimization Status from Native Module
-const {BatteryOptimization} = NativeModules;
 
-console.log(BatteryOptimization.isBatteryOptimizationEnabled,"Battery Optimization")
+const { BatteryOptimization } = NativeModules;
 
 function App() {
-
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [saverMode, setsaverMode] = useState(false);
-  
+  const [saverMode, setSaverMode] = useState(false);
+
   useEffect(() => {
+    const watchLocation = () => {
+      const watchId = Geolocation.watchPosition(
+        position => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ latitude, longitude });
+        },
+        error => console.log(error.message),
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
+      );
+
+      return watchId;
+    };
+
+    const updateLocation = () => {
+      Geolocation.getCurrentPosition(
+        position => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ latitude, longitude });
+        },
+        error => console.log(error.message),
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 },
+      );
+
+      const timerId = setInterval(() => {
+        Geolocation.clearWatch(watchLocation());
+        watchLocation();
+      }, 10 * 60 * 1000);
+
+      return () => clearInterval(timerId);
+    };
+
     if (Platform.OS === 'android') {
       BatteryOptimization.isBatteryOptimizationEnabled()
-        .then((isEnabled: any) => {
+        .then(isEnabled => {
           console.log('Battery optimization enabled:', isEnabled);
-          setsaverMode(isEnabled);
-          if (isEnabled == true) {
-            Alert.alert('Battery Saver mode enabled Map might not work !');
+          setSaverMode(isEnabled);
+          if (isEnabled) {
+            Alert.alert('Battery Saver mode enabled. Map might not work!');
           }
         })
-        .catch((error: any) => {
+        .catch(error => {
           console.error('Error checking battery optimization:', error);
         });
     } else {
@@ -38,32 +66,18 @@ function App() {
         'Battery optimization status can only be checked on Android.',
       );
     }
-  }, [BatteryOptimization]);
 
-  useEffect(() => {
-    // Fetch user's current location
-    fetchLocation();
+    updateLocation();
 
-    // timer to fetch location every 10 minutes
-    const intervalId = setInterval(fetchLocation, 10 * 60 * 1000);
-
-    // Clean up timer on component unmount
-    return () => clearInterval(intervalId);
+    return () => Geolocation.clearWatch(watchLocation());
   }, []);
 
-  const fetchLocation = () => {
-    Geolocation.getCurrentPosition(
-      position => {
-        const {latitude, longitude} = position.coords;
-        setCurrentLocation({latitude, longitude});
-      },
-      error => console.log(error.message),
-      {enableHighAccuracy: true, timeout: 20000, maximumAge: 1000},
-    );
-  };
   const polygon = [
-    {latitude: 28.457523, longitude: 77.026344},
-    {latitude: 28.6448, longitude: 77.216721},
+    {
+      latitude: currentLocation?.latitude,
+      longitude: currentLocation?.longitude,
+    },
+    { latitude: 28.6448, longitude: 77.216721 },
   ];
 
   return (
@@ -78,14 +92,18 @@ function App() {
               latitudeDelta: 0.0922,
               longitudeDelta: 0.0421,
             }}
-            zoomControlEnabled
-            showsUserLocation>
+            zoomControlEnabled>
             <Marker coordinate={currentLocation} />
-            <Polygon coordinates={polygon} strokeColor="red" />
+            <Polyline
+              coordinates={polygon}
+              strokeColor="orange"
+              strokeWidth={3}
+              lineDashPattern={[10, 20]}
+            />
           </MapView>
           <View style={styles.batteryStatusView}>
             <Text style={styles.batteryStatusTxt}>
-              Battery Optimization Status : {saverMode == true ? 'ON' : 'OFF'}
+              Battery Optimization Status: {saverMode ? 'ON' : 'OFF'}
             </Text>
           </View>
         </>
@@ -109,15 +127,15 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   batteryStatusView: {
-    width: '70%',
+    width: '100%',
     height: 40,
-    backgroundColor: 'red',
+    backgroundColor: 'lightblue',
     top: 10,
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  batteryStatusTxt: {fontSize: 14, color: '#fff'},
+  batteryStatusTxt: { fontSize: 14, color: '#fff' },
 });
 
 export default App;
